@@ -26,7 +26,9 @@
 #   versions (Python/Go/Rust/Node), AWS/GCP/Azure profile — all natively.
 #   Nerd Font compatible but works with basic powerline fonts too.
 #   Works perfectly on Wayland/KDE.
-#   In Fedora repos since F37: dnf install starship
+#   NOTE: starship was dropped from official Fedora repos after F36 (Rust packaging
+#   complexity). atim/starship COPR is unreliable (see install section below).
+#   We install from the official upstream binary installer instead.
 #
 # POWERLEVEL10K (p10k):
 #   The most feature-rich zsh prompt. Instant prompt feature for near-zero
@@ -69,11 +71,53 @@ log_step "Installing Zsh and shell utilities"
 
 dnf_install \
   zsh \
-  starship \
   fzf \
   bat \
-  eza \
-  thefuck
+  eza
+# NOTE: thefuck has no Fedora 44 RPM. Installed via pipx in 03-devtools.sh.
+# NOTE: starship is NOT installed via dnf or atim/starship COPR (see below).
+
+# =============================================================================
+# 2. Starship prompt — upstream binary installer (do NOT use atim/starship COPR)
+# =============================================================================
+# atim/starship COPR problems (confirmed 2024-2025):
+#   - Lags behind upstream releases (issue starship/starship #7109, Nov 2025)
+#   - GPG key rotation breaks `dnf upgrade` — requires manual key removal/re-add
+#   - Fedora Discussion: "likely personal testing repo, which you should not use"
+#
+# Fedora also dropped starship from official repos after F36 (too many Rust deps).
+#
+# Solution: official upstream install.sh, installed to ~/.local/bin.
+# Pipe to bash (not sh) — Fedora's sh is a bash symlink that fails the POSIX check
+# in the starship installer (starship/starship issue #6316).
+# Using --bin-dir ~/.local/bin avoids any need for sudo.
+log_step "Installing Starship prompt (upstream binary installer)"
+
+STARSHIP_BIN="${REAL_HOME}/.local/bin/starship"
+
+if [[ -x "${STARSHIP_BIN}" ]]; then
+  log_skip "Starship (already at ${STARSHIP_BIN})"
+else
+  if ! "${DRY_RUN}"; then
+    sudo -u "${REAL_USER}" bash -c "
+      mkdir -p '${REAL_HOME}/.local/bin'
+      curl -sS https://starship.rs/install.sh | bash -s -- \
+        --bin-dir '${REAL_HOME}/.local/bin' \
+        --yes
+    "
+    if [[ -x "${STARSHIP_BIN}" ]]; then
+      log_success "Starship installed to ${STARSHIP_BIN}"
+    else
+      log_warn "Starship installer failed to produce binary at ${STARSHIP_BIN}"
+      log_warn "Manual install: curl -sS https://starship.rs/install.sh | bash -s -- --bin-dir ~/.local/bin --yes"
+    fi
+  else
+    log_dry "Would install Starship to ${STARSHIP_BIN} via upstream installer (piped to bash)"
+  fi
+fi
+
+# Make starship available to subsequent steps in this script session
+export PATH="${REAL_HOME}/.local/bin:${PATH}"
 
 # =============================================================================
 # 2. Set zsh as default shell
