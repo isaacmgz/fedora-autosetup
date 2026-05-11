@@ -27,7 +27,7 @@ BRAVE_REPO="/etc/yum.repos.d/brave-browser-nightly.repo"
 if [[ ! -f "${BRAVE_REPO}" ]]; then
   if ! "${DRY_RUN}"; then
     # Import Brave GPG key
-    sudo rpm --import https://brave-browser-rpm-release.s3.brave.com/brave-core-nightly.asc
+    sudo rpm --import https://brave-browser-rpm-release.s3.brave.com/brave-core.asc
 
     # Add repo file
     sudo tee "${BRAVE_REPO}" > /dev/null <<'EOF'
@@ -38,7 +38,7 @@ enabled=1
 autorefresh=1
 type=rpm
 gpgcheck=1
-gpgkey=https://brave-browser-rpm-release.s3.brave.com/brave-core-nightly.asc
+gpgkey=https://brave-browser-rpm-release.s3.brave.com/brave-core.asc
 EOF
     log_success "Brave Nightly repo configured"
   else
