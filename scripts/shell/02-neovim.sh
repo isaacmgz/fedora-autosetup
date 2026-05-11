@@ -59,9 +59,16 @@ NVIM_CONFIG_DIR="${REAL_HOME}/.config/nvim"
 # =============================================================================
 log_step "Installing Neovim and dependencies"
 
+# python3-neovim is the correct Fedora RPM name (source package: python-neovim).
+# python3-pynvim does NOT exist as a Fedora RPM — it caused your DNF5 error.
+# python3-neovim provides the pynvim library and is needed for Python-based
+# plugins and for :checkhealth to pass without Python provider warnings.
+#
+# wl-clipboard: primary clipboard tool for Wayland (wl-copy / wl-paste).
+# xclip / xsel: XWayland fallbacks, valid RPMs, harmless to install alongside.
 dnf_install \
   neovim \
-  python3-pynvim \
+  python3-neovim \
   wl-clipboard \
   xclip \
   xsel
