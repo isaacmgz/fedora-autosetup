@@ -24,13 +24,18 @@ FEDORA_VER="${FEDORA_VERSION:-44}"
 log_step "Configuring Brave Nightly repository"
 
 BRAVE_REPO="/etc/yum.repos.d/brave-browser-nightly.repo"
+# Nightly/beta use a DIFFERENT signing key from stable (brave-core.asc).
+# Using the wrong key causes GPG verification failures on package install.
+BRAVE_NIGHTLY_KEY="https://brave-browser-rpm-beta.s3.brave.com/brave-core-nightly.asc"
+
 if [[ ! -f "${BRAVE_REPO}" ]]; then
   if ! "${DRY_RUN}"; then
-    # Import Brave GPG key
-    sudo rpm --import https://brave-browser-rpm-release.s3.brave.com/brave-core.asc
+    # Import the correct nightly signing key
+    sudo rpm --import "${BRAVE_NIGHTLY_KEY}"
 
-    # Add repo file
-    sudo tee "${BRAVE_REPO}" > /dev/null <<'EOF'
+    # repo_gpgcheck=0 is required: Brave does not GPG-sign the repomd.xml metadata,
+    # only individual packages. DNF5 rejects unsigned metadata by default.
+    sudo tee "${BRAVE_REPO}" > /dev/null <<EOF
 [brave-browser-nightly]
 name=Brave Browser Nightly
 baseurl=https://brave-browser-rpm-nightly.s3.brave.com/x86_64/
@@ -38,7 +43,8 @@ enabled=1
 autorefresh=1
 type=rpm
 gpgcheck=1
-gpgkey=https://brave-browser-rpm-release.s3.brave.com/brave-core.asc
+repo_gpgcheck=0
+gpgkey=${BRAVE_NIGHTLY_KEY}
 EOF
     log_success "Brave Nightly repo configured"
   else
@@ -81,34 +87,14 @@ else
 fi
 
 # =============================================================================
-# 3. Helm (from official Helm repo)
+# 3. Helm — NO external repo needed
 # =============================================================================
-# Helm provides an official RPM repo via Artifact Hub / Helm CDN.
-# This is preferred over COPR or manual binary downloads.
+# Fedora 44 ships Helm 4 in the official repositories (tracked F44 change).
+# A parallel `helm3` package is also available for backward compatibility.
+# The baltocdn.com external repo is unnecessary and adds third-party risk.
+# Helm installation is handled in scripts/containers/01-containers.sh.
 # -----------------------------------------------------------------------------
-log_step "Configuring Helm repository"
-
-HELM_REPO="/etc/yum.repos.d/helm.repo"
-if [[ ! -f "${HELM_REPO}" ]]; then
-  if ! "${DRY_RUN}"; then
-    # Import Helm GPG key
-    curl -fsSL https://baltocdn.com/helm/signing.asc | sudo gpg --dearmor -o /etc/pki/rpm-gpg/helm.gpg
-
-    sudo tee "${HELM_REPO}" > /dev/null <<'EOF'
-[helm-stable]
-name=Helm Stable
-baseurl=https://baltocdn.com/helm/stable/rpm/
-enabled=1
-gpgcheck=1
-gpgkey=file:///etc/pki/rpm-gpg/helm.gpg
-EOF
-    log_success "Helm repo configured"
-  else
-    log_dry "Would configure Helm repo at ${HELM_REPO}"
-  fi
-else
-  log_skip "Helm repo (already configured)"
-fi
+log_info "Helm: no external repo needed — available in Fedora 44 official repos"
 
 # =============================================================================
 # 4. GitHub CLI (gh)
