@@ -126,8 +126,19 @@ dnf_install kubectl
 # =============================================================================
 # 4. Helm — Kubernetes package manager
 # =============================================================================
-log_step "Installing Helm"
+log_step "Installing Helm (from Fedora official repo)"
+# Fedora 44 ships Helm 4 in the standard repos — no external repo needed.
+# helm3 is also available as a parallel package for backward compatibility.
+# Helm 4 has intentional breaking changes vs Helm 3.
 dnf_install helm
+
+if ! "${DRY_RUN}" && has_cmd helm; then
+  HELM_MAJOR="$(helm version --short 2>/dev/null | grep -oP 'v\K\d+' | head -1)"
+  if [[ "${HELM_MAJOR:-0}" -ge 4 ]]; then
+    log_warn "Helm ${HELM_MAJOR} installed (Fedora 44 default). Helm 4 has breaking changes."
+    log_warn "If your charts require Helm 3 syntax: sudo dnf install helm3"
+  fi
+fi
 
 # =============================================================================
 # 5. kind — Kubernetes IN Docker/Podman (RECOMMENDED for local dev)
@@ -186,8 +197,40 @@ log_step "Installing additional Kubernetes tools"
 dnf_install k9s
 
 # ── kubectx + kubens — fast context/namespace switching ──────────────────────
-# Both are included in the 'kubectx' package on Fedora
-dnf_install kubectx
+# kubectx is NOT in the Fedora official repos. Install as version-pinned shell
+# scripts from the official GitHub release. No COPR needed — these are
+# standalone bash scripts with no compilation required.
+log_step "Installing kubectx and kubens"
+KUBECTX_VERSION="0.9.5"
+KUBECTX_BIN="/usr/local/bin/kubectx"
+KUBENS_BIN="/usr/local/bin/kubens"
+KUBECTX_BASE="https://github.com/ahmetb/kubectx/releases/download/v${KUBECTX_VERSION}"
+
+if [[ ! -x "${KUBECTX_BIN}" ]]; then
+  if ! "${DRY_RUN}"; then
+    curl -fsSL "${KUBECTX_BASE}/kubectx" -o /tmp/kubectx
+    chmod +x /tmp/kubectx
+    sudo mv /tmp/kubectx "${KUBECTX_BIN}"
+    log_success "kubectx ${KUBECTX_VERSION} installed"
+  else
+    log_dry "Would install kubectx ${KUBECTX_VERSION} to ${KUBECTX_BIN}"
+  fi
+else
+  log_skip "kubectx (already at ${KUBECTX_BIN})"
+fi
+
+if [[ ! -x "${KUBENS_BIN}" ]]; then
+  if ! "${DRY_RUN}"; then
+    curl -fsSL "${KUBECTX_BASE}/kubens" -o /tmp/kubens
+    chmod +x /tmp/kubens
+    sudo mv /tmp/kubens "${KUBENS_BIN}"
+    log_success "kubens ${KUBECTX_VERSION} installed"
+  else
+    log_dry "Would install kubens ${KUBECTX_VERSION} to ${KUBENS_BIN}"
+  fi
+else
+  log_skip "kubens (already at ${KUBENS_BIN})"
+fi
 
 # ── kustomize — Kubernetes config management ──────────────────────────────────
 KUSTOMIZE_BINARY="/usr/local/bin/kustomize"
