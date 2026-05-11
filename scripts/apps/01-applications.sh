@@ -57,6 +57,10 @@ REAL_HOME="$(real_home)"
 # 1. Brave Browser Nightly
 # =============================================================================
 log_step "Installing Brave Browser Nightly"
+# brave-browser-nightly is the correct package name in the nightly repo.
+# The repo and GPG key are configured in scripts/system/02-repos.sh.
+# Do NOT use the curl-pipe-sh installer — it is not idempotent and adds its
+# own conflicting repo.
 dnf_install brave-browser-nightly
 
 # =============================================================================
@@ -142,97 +146,110 @@ log_info "Spotify Flatpak uses Pipewire (via PulseAudio compatibility layer) on 
 log_info "Audio should work out of the box with KDE/Pipewire."
 
 # =============================================================================
-# 4. JetBrains Toolbox
+# 4. JetBrains Toolbox — manual installation (removed from automation)
 # =============================================================================
-log_step "Installing JetBrains Toolbox"
+log_step "JetBrains Toolbox — manual installation required"
+log_warn "JetBrains Toolbox is intentionally not automated."
+log_info "Install manually after setup:"
+echo "  1. Download from: https://www.jetbrains.com/toolbox-app/"
+echo "  2. Extract: tar -xzf jetbrains-toolbox-*.tar.gz"
+echo "  3. Run:     ./jetbrains-toolbox-*/jetbrains-toolbox"
+echo "     (Toolbox installs to ~/.local/share/JetBrains/Toolbox automatically)"
+echo ""
+log_info "Wayland note: enable native Wayland per IDE via:"
+echo "     Help → Edit Custom VM Options → add: -Dawt.toolkit.name=WLToolkit"
 
-TOOLBOX_INSTALL_DIR="${REAL_HOME}/.local/share/JetBrains/Toolbox"
-TOOLBOX_BIN="${TOOLBOX_INSTALL_DIR}/bin/jetbrains-toolbox"
+# =============================================================================
+# 5. Lotion — Unofficial Notion desktop app for Linux
+# =============================================================================
+# Source:  https://github.com/puneetsl/lotion
+# Release: v1.5.0 (2025-10-27) — Electron-based, actively maintained.
+#
+# Install method: direct RPM download from GitHub releases.
+# There is no DNF repo and no upstream GPG signing key published.
+# The RPM must be installed with --nogpgcheck for a local file install.
+# Integrity is verified via SHA256 checksum against the published value.
+#
+# Updates are MANUAL: check https://github.com/puneetsl/lotion/releases
+# and re-run this module when a new version is published.
+#
+# Wayland note: Lotion is Electron-based. Electron supports Wayland natively
+# via the --ozone-platform=wayland flag. The desktop entry written below
+# enables this automatically for KDE Plasma 6 / Wayland sessions.
+# =============================================================================
+log_section "Lotion (Unofficial Notion Desktop App)"
 
-if [[ -f "${TOOLBOX_BIN}" ]]; then
-  log_skip "JetBrains Toolbox (already installed at ${TOOLBOX_BIN})"
+LOTION_VERSION="1.5.0"
+LOTION_RPM="lotion-${LOTION_VERSION}-1.x86_64.rpm"
+LOTION_URL="https://github.com/puneetsl/lotion/releases/download/v${LOTION_VERSION}/${LOTION_RPM}"
+LOTION_SHA256="e18b35803c8da9c22dec523cc17e001abce1f568a51283790d267bbf50ec4720"
+LOTION_TMP="/tmp/${LOTION_RPM}"
+
+# Check if already installed (rpm -q uses the package name without version)
+if rpm_installed lotion; then
+  INSTALLED_VER="$(rpm -q lotion --qf '%{VERSION}' 2>/dev/null)"
+  if [[ "${INSTALLED_VER}" == "${LOTION_VERSION}" ]]; then
+    log_skip "Lotion ${LOTION_VERSION} (already installed)"
+  else
+    log_warn "Lotion ${INSTALLED_VER} installed, expected ${LOTION_VERSION}"
+    log_warn "To upgrade: re-run this module after updating LOTION_VERSION in the script"
+  fi
 else
   if ! "${DRY_RUN}"; then
-    log_step "Fetching latest JetBrains Toolbox release"
+    log_step "Downloading Lotion ${LOTION_VERSION} RPM"
+    curl -fsSL "${LOTION_URL}" -o "${LOTION_TMP}"
 
-    # Fetch latest download URL from JetBrains data API
-    TOOLBOX_URL=$(curl -fsSL 'https://data.services.jetbrains.com/products/releases?code=TBA&latest=true&type=release' \
-      | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-releases = data.get('TBA', [])
-if releases:
-    for asset in releases[0].get('downloads', {}).values():
-        if 'linux' in asset.get('link', '').lower():
-            print(asset['link'])
-            break
-" 2>/dev/null)
+    # Verify SHA256 checksum against the value published on the GitHub release page
+    log_step "Verifying SHA256 checksum"
+    ACTUAL_SHA256="$(sha256sum "${LOTION_TMP}" | cut -d' ' -f1)"
+    if [[ "${ACTUAL_SHA256}" != "${LOTION_SHA256}" ]]; then
+      rm -f "${LOTION_TMP}"
+      die "SHA256 mismatch for ${LOTION_RPM}
+  Expected: ${LOTION_SHA256}
+  Got:      ${ACTUAL_SHA256}
+Aborting install. Do not proceed with a corrupted package."
+    fi
+    log_success "Checksum verified"
 
-    if [[ -z "${TOOLBOX_URL}" ]]; then
-      log_warn "Could not auto-detect Toolbox URL. Using known stable URL."
-      TOOLBOX_URL="https://download.jetbrains.com/toolbox/jetbrains-toolbox-2.5.4.35118.tar.gz"
+    # Install the local RPM. --nogpgcheck is required because lotion does not
+    # publish a GPG signing key — SHA256 verification above is the integrity check.
+    log_step "Installing Lotion RPM"
+    sudo "${DNF_CMD}" install -y --nogpgcheck "${LOTION_TMP}"
+    rm -f "${LOTION_TMP}"
+    log_success "Lotion ${LOTION_VERSION} installed"
+
+    # Patch the desktop entry to enable native Wayland via Ozone.
+    # Without this, Electron falls back to XWayland on a Wayland session,
+    # which causes blurry rendering on HiDPI and broken clipboard behaviour.
+    LOTION_DESKTOP="/usr/share/applications/lotion.desktop"
+    if [[ -f "${LOTION_DESKTOP}" ]]; then
+      log_step "Patching Lotion desktop entry for Wayland (Ozone)"
+      # Add --ozone-platform=wayland --enable-features=WaylandWindowDecorations
+      # to the Exec line if not already present
+      if ! grep -q "ozone-platform" "${LOTION_DESKTOP}"; then
+        sudo sed -i \
+          's|^Exec=lotion\b|Exec=lotion --ozone-platform=wayland --enable-features=WaylandWindowDecorations|' \
+          "${LOTION_DESKTOP}"
+        log_success "Wayland Ozone flags added to desktop entry"
+      else
+        log_skip "Wayland flags already present in desktop entry"
+      fi
+    else
+      log_warn "Desktop entry not found at ${LOTION_DESKTOP} — skipping Wayland patch"
+      log_warn "If Lotion installs its .desktop file elsewhere, add manually:"
+      log_warn "  --ozone-platform=wayland --enable-features=WaylandWindowDecorations"
     fi
 
-    log_step "Downloading JetBrains Toolbox from: ${TOOLBOX_URL}"
-    curl -fsSL "${TOOLBOX_URL}" -o /tmp/jetbrains-toolbox.tar.gz
-
-    # Extract to temp dir
-    TOOLBOX_TMP=$(mktemp -d)
-    tar -xzf /tmp/jetbrains-toolbox.tar.gz -C "${TOOLBOX_TMP}" --strip-components=1
-
-    # Run as the real user — Toolbox installs to ~/.local
-    sudo -u "${REAL_USER}" bash -c "
-      export HOME='${REAL_HOME}'
-      '${TOOLBOX_TMP}/jetbrains-toolbox' --install
-    " || {
-      # Fallback: manual install
-      sudo -u "${REAL_USER}" mkdir -p "${TOOLBOX_INSTALL_DIR}/bin"
-      cp "${TOOLBOX_TMP}/jetbrains-toolbox" "${TOOLBOX_BIN}"
-      chmod +x "${TOOLBOX_BIN}"
-    }
-
-    rm -rf "${TOOLBOX_TMP}" /tmp/jetbrains-toolbox.tar.gz
-    log_success "JetBrains Toolbox installed"
-    log_info "Launch: ${TOOLBOX_BIN}"
-    log_info "Toolbox will set up desktop integration and auto-update on first launch"
   else
-    log_dry "Would download and install JetBrains Toolbox to ${TOOLBOX_INSTALL_DIR}"
+    log_dry "Would download and verify Lotion ${LOTION_VERSION} RPM from GitHub releases"
+    log_dry "Would install with: sudo ${DNF_CMD} install --nogpgcheck ${LOTION_TMP}"
+    log_dry "Would patch desktop entry for Wayland Ozone"
   fi
 fi
 
-# =============================================================================
-# 5. Notion — LOTION DEPRECATED, using PWA recommendation
-# =============================================================================
-log_section "Notion / Lotion"
-
-log_warn "IMPORTANT: Lotion is UNMAINTAINED since ~2019. Do NOT use it."
-log_warn "Lotion is based on an outdated Electron wrapper that is no longer maintained."
-echo ""
-log_info "Recommended Notion approaches for Fedora 44 / KDE:"
-echo "  1. [BEST]   Use Notion as a Progressive Web App in Brave Browser:"
-echo "                - Open notion.so in Brave"
-echo "                - Menu → More tools → 'Install Notion as app'"
-echo "                - Creates a desktop entry with app-like experience"
-echo ""
-echo "  2. [GOOD]   Flatpak community wrapper (notion-app-enhanced):"
-echo "                flatpak install flathub notion.id.Notion"
-echo ""
-
-if confirm "Install Notion Flatpak (community wrapper)?" ; then
-  if ! "${DRY_RUN}"; then
-    # notion-app-enhanced is the maintained community wrapper on Flathub
-    flatpak install -y flathub notion.id.Notion 2>/dev/null || \
-    flatpak install -y flathub io.github.davidlj95.notion-app 2>/dev/null || {
-      log_warn "Notion Flatpak not found under known app IDs."
-      log_warn "Check https://flathub.org/apps/search?q=notion for current app ID"
-      log_warn "Fallback: Use Notion as a PWA in Brave (recommended)"
-    }
-  else
-    log_dry "flatpak install flathub notion.id.Notion"
-  fi
-else
-  log_info "Skipping Notion Flatpak. Use as PWA in Brave Browser (recommended)"
-fi
+log_warn "Lotion updates are MANUAL — no DNF repo exists."
+log_warn "Check for new releases at: https://github.com/puneetsl/lotion/releases"
+log_warn "To update: change LOTION_VERSION in this script and re-run with --only apps"
 
 # =============================================================================
 # 6. Additional KDE applications
