@@ -77,7 +77,7 @@ dnf_install \
   python3-pip \
   python3-devel \
   python3-virtualenv \
-  python3-pipx \
+  pipx \
   nodejs \
   npm \
   rust \
@@ -174,25 +174,53 @@ dnf_install \
   openssh-clients
 
 # =============================================================================
-# 8. thefuck — pip install (no longer in Fedora repos)
+# 8. thefuck — pipx install with Python 3.12+ compatibility fix
 # =============================================================================
 # python3-thefuck was dropped from Fedora after F38.
-# pipx is the correct modern method: installs into isolated venv, adds to PATH.
-# This avoids polluting the system Python and is safer than --user pip.
+# pipx installs into an isolated venv and adds the binary to PATH.
+#
+# KNOWN BREAKAGE — Python 3.12+ (Fedora 44 ships Python 3.14):
+#   thefuck imports `distutils.spawn.find_executable` in unix.py.
+#   distutils was removed from the stdlib in Python 3.12 (PEP 632).
+#   This causes: ModuleNotFoundError: No module named 'distutils'
+#   The upstream fix is an open PR (#1526) — not yet merged or released.
+#
+# WORKAROUND (confirmed in upstream issue tracker, thefuck/thefuck #1534):
+#   Inject `setuptools` (which vendors distutils) and `imp2importlib`
+#   into the pipx venv after installation. Both are required.
 # -----------------------------------------------------------------------------
-log_step "Installing thefuck via pipx"
+log_step "Installing thefuck via pipx (with Python 3.14 compatibility fix)"
 
-if ! has_cmd thefuck; then
-  if ! "${DRY_RUN}"; then
-    # Ensure pipx path is configured
-    python3 -m pipx ensurepath --force 2>/dev/null || true
+if ! "${DRY_RUN}"; then
+  # Ensure pipx path is configured
+  python3 -m pipx ensurepath --force 2>/dev/null || true
+
+  if ! has_cmd thefuck; then
     python3 -m pipx install thefuck
-    log_success "thefuck installed via pipx"
+    log_success "thefuck installed"
   else
-    log_dry "python3 -m pipx install thefuck"
+    log_skip "thefuck binary (already installed)"
+  fi
+
+  # Always inject the compatibility shims — idempotent, pipx silently no-ops
+  # if the package is already present in the venv.
+  log_step "Injecting setuptools and imp2importlib into thefuck venv (Python 3.12+ fix)"
+  python3 -m pipx inject thefuck "setuptools>=80"
+  python3 -m pipx inject thefuck imp2importlib
+
+  # Verify the fix worked — if thefuck still crashes on import, surface it now
+  if python3 -m pipx run --spec thefuck thefuck --version &>/dev/null 2>&1 || \
+     thefuck --version &>/dev/null 2>&1; then
+    log_success "thefuck is functional"
+  else
+    log_warn "thefuck still fails after injection. The upstream fix may not yet cover Python 3.14."
+    log_warn "Track: https://github.com/nvbn/thefuck/pull/1526"
+    log_warn "thefuck will be skipped in .zshrc until resolved."
   fi
 else
-  log_skip "thefuck (already installed)"
+  log_dry "python3 -m pipx install thefuck"
+  log_dry "python3 -m pipx inject thefuck 'setuptools>=80'"
+  log_dry "python3 -m pipx inject thefuck imp2importlib"
 fi
 
 # =============================================================================
