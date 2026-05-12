@@ -404,21 +404,27 @@ require("lazy").setup({
   },
 
   -- ── Treesitter ────────────────────────────────────────────────────────────────
+  -- nvim-treesitter v0.9+ removed the require("nvim-treesitter.configs") module.
+  -- The correct API is to pass config via opts = {} in the plugin spec,
+  -- which lazy.nvim passes to the plugin's own setup() automatically.
   {
     "nvim-treesitter/nvim-treesitter",
     build = ":TSUpdate",
-    config = function()
-      require("nvim-treesitter.configs").setup({
-        ensure_installed = {
-          "bash", "c", "cpp", "go", "lua", "python", "rust",
-          "typescript", "javascript", "json", "yaml", "toml",
-          "dockerfile", "terraform", "hcl", "markdown", "vim",
-          "regex", "query",
-        },
-        highlight = { enable = true },
-        indent = { enable = true },
-        incremental_selection = { enable = true },
-      })
+    -- event = "BufReadPost" keeps it lazy — only loads when a buffer is opened
+    event = { "BufReadPost", "BufNewFile" },
+    opts = {
+      ensure_installed = {
+        "bash", "c", "cpp", "go", "lua", "python", "rust",
+        "typescript", "javascript", "json", "yaml", "toml",
+        "dockerfile", "terraform", "hcl", "markdown", "vim",
+        "regex", "query",
+      },
+      highlight = { enable = true },
+      indent = { enable = true },
+      incremental_selection = { enable = true },
+    },
+    config = function(_, opts)
+      require("nvim-treesitter.configs").setup(opts)
     end,
   },
 
@@ -432,6 +438,13 @@ require("lazy").setup({
     },
     config = function()
       require("mason").setup()
+
+      local caps = require("cmp_nvim_lsp").default_capabilities()
+      local lspconfig = require("lspconfig")
+
+      -- mason-lspconfig v2.0 removed setup_handlers().
+      -- The correct API is the `handlers` table inside setup().
+      -- Each handler receives the server name and sets it up via lspconfig directly.
       require("mason-lspconfig").setup({
         ensure_installed = {
           "lua_ls",        -- Lua (Neovim config)
@@ -445,28 +458,28 @@ require("lazy").setup({
           "terraformls",   -- Terraform/HCL
         },
         automatic_installation = true,
-      })
-
-      local lspconfig = require("lspconfig")
-      local caps = require("cmp_nvim_lsp").default_capabilities()
-
-      -- Configure each installed server
-      require("mason-lspconfig").setup_handlers({
-        function(server_name)
-          lspconfig[server_name].setup({ capabilities = caps })
-        end,
-        ["lua_ls"] = function()
-          lspconfig.lua_ls.setup({
-            capabilities = caps,
-            settings = {
-              Lua = {
-                diagnostics = { globals = { "vim" } },
-                workspace = { library = vim.api.nvim_get_runtime_file("", true) },
-                telemetry = { enable = false },
+        handlers = {
+          -- Default handler: applies to every installed server not listed below
+          function(server_name)
+            lspconfig[server_name].setup({ capabilities = caps })
+          end,
+          -- Server-specific overrides
+          ["lua_ls"] = function()
+            lspconfig.lua_ls.setup({
+              capabilities = caps,
+              settings = {
+                Lua = {
+                  diagnostics = { globals = { "vim" } },
+                  workspace = {
+                    library = vim.api.nvim_get_runtime_file("", true),
+                    checkThirdParty = false,
+                  },
+                  telemetry = { enable = false },
+                },
               },
-            },
-          })
-        end,
+            })
+          end,
+        },
       })
 
       -- Diagnostic display
@@ -560,7 +573,7 @@ require("lazy").setup({
         },
         format_on_save = {
           timeout_ms = 500,
-          lsp_fallback = true,
+          lsp_format = "fallback",  -- "fallback" = use LSP only if no conform formatter found
         },
       })
     end,
