@@ -109,9 +109,9 @@ dnf_install python3-lsp-server || true  # Optional; pyright via Mason is better
 # We use Mason.nvim to install lua-language-server from within Neovim
 
 # Formatters via dnf
-dnf_install \
-  shfmt \
-  stylua 2>/dev/null || true  # stylua may not be in all Fedora versions
+dnf_install shfmt
+# stylua: in Fedora repos since F42 — if missing, cargo install fallback below
+dnf_install stylua 2>/dev/null || true
 
 # stylua via cargo if not available as RPM
 if ! has_cmd stylua; then
@@ -128,7 +128,13 @@ fi
 log_step "Writing Neovim configuration"
 
 if ! "${DRY_RUN}"; then
-  sudo -u "${REAL_USER}" mkdir -p "${NVIM_CONFIG_DIR}/lua"
+  # Create ALL subdirectories before any tee call.
+  # lua/config/ must exist before options.lua, keymaps.lua, plugins.lua are written.
+  # This was the cause of: tee: .../lua/config/options.lua: No such file or directory
+  sudo -u "${REAL_USER}" mkdir -p \
+    "${NVIM_CONFIG_DIR}" \
+    "${NVIM_CONFIG_DIR}/lua" \
+    "${NVIM_CONFIG_DIR}/lua/config"
 fi
 
 # ── init.lua ──────────────────────────────────────────────────────────────────
@@ -647,8 +653,6 @@ require("lazy").setup({
   checker = { enabled = true, notify = false },  -- Auto-check for plugin updates
 })
 PLUGINS_EOF
-
-sudo -u "${REAL_USER}" mkdir -p "${NVIM_CONFIG_DIR}/lua/config"
 
 fi # end DRY_RUN check
 
