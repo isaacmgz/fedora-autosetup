@@ -87,9 +87,14 @@ dnf_install \
 #
 # Fedora also dropped starship from official repos after F36 (too many Rust deps).
 #
-# Solution: official upstream install.sh, installed to ~/.local/bin.
-# Pipe to bash (not sh) — Fedora's sh is a bash symlink that fails the POSIX check
-# in the starship installer (starship/starship issue #6316).
+# POSIX CHECK FIX (starship/starship issue #6316):
+#   The installer's verify_shell_is_posix_or_exit() detects $BASH_VERSION being
+#   set and $POSIXLY_CORRECT being unset, then refuses to run.
+#   This affects Fedora because /usr/bin/sh is a symlink to bash.
+#   Piping to `bash` makes it worse — bash sets $BASH_VERSION unconditionally.
+#   The correct fix is `sh --posix`, which activates bash's POSIX mode,
+#   sets $POSIXLY_CORRECT, and satisfies the installer's check.
+#
 # Using --bin-dir ~/.local/bin avoids any need for sudo.
 log_step "Installing Starship prompt (upstream binary installer)"
 
@@ -101,7 +106,7 @@ else
   if ! "${DRY_RUN}"; then
     sudo -u "${REAL_USER}" bash -c "
       mkdir -p '${REAL_HOME}/.local/bin'
-      curl -sS https://starship.rs/install.sh | bash -s -- \
+      curl -sS https://starship.rs/install.sh | sh --posix -s -- \
         --bin-dir '${REAL_HOME}/.local/bin' \
         --yes
     "
@@ -109,10 +114,10 @@ else
       log_success "Starship installed to ${STARSHIP_BIN}"
     else
       log_warn "Starship installer failed to produce binary at ${STARSHIP_BIN}"
-      log_warn "Manual install: curl -sS https://starship.rs/install.sh | bash -s -- --bin-dir ~/.local/bin --yes"
+      log_warn "Manual install: curl -sS https://starship.rs/install.sh | sh --posix -s -- --bin-dir ~/.local/bin --yes"
     fi
   else
-    log_dry "Would install Starship to ${STARSHIP_BIN} via upstream installer (piped to bash)"
+    log_dry "Would install Starship to ${STARSHIP_BIN} via: curl -sS https://starship.rs/install.sh | sh --posix -s -- --bin-dir ~/.local/bin --yes"
   fi
 fi
 
