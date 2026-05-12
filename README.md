@@ -463,3 +463,10 @@ echo "test" | wl-copy && wl-paste # Should print "test"
 9. **Group membership**: Adding yourself to `libvirt`, `kvm`, `docker` groups requires a complete logout/login to take effect. `newgrp libvirt` works for the current session only.
 
 10. **JetBrains Toolbox + Wayland**: Toolbox itself runs via XWayland. Individual JetBrains IDEs have Wayland support (enable via `_JAVA_AWT_WM_NONREPARENTING=1` in the IDE's `.vmoptions` or use the `--enable-native-access` JVM flag that newer IDEs use automatically).
+
+14. **thefuck on Python 3.12+**: Fedora 44 ships Python 3.14. `thefuck` imports `distutils.spawn`, which was removed from the stdlib in Python 3.12 (PEP 632), causing `ModuleNotFoundError: No module named 'distutils'` on startup. The upstream fix is an open PR not yet released. The workaround — injecting `setuptools` and `imp2importlib` into the pipx venv — is applied automatically by the devtools script. If you installed `thefuck` before this fix was applied, run manually:
+    ```bash
+    pipx inject thefuck "setuptools>=80"
+    pipx inject thefuck imp2importlib
+    ```
+    Track upstream progress at: https://github.com/nvbn/thefuck/pull/1526
