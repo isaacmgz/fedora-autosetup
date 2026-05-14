@@ -235,9 +235,12 @@ opt.list = true
 opt.listchars = { tab = "» ", trail = "·", nbsp = "␣" }
 
 -- Neovim providers
+-- python3: required — pynvim is installed via python3-neovim RPM
 vim.g.python3_host_prog = vim.fn.exepath("python3")
-vim.g.loaded_perl_provider = 0    -- Disable Perl provider (not needed)
-vim.g.loaded_ruby_provider = 0    -- Disable Ruby provider (not needed)
+-- Disable unused providers to silence :checkhealth warnings
+vim.g.loaded_perl_provider   = 0  -- no Perl plugins used
+vim.g.loaded_ruby_provider   = 0  -- no Ruby plugins used
+vim.g.loaded_node_provider   = 0  -- no Node plugins used; avoids "npm install -g neovim" warning
 OPTIONS_EOF
 
 # ── keymaps.lua ───────────────────────────────────────────────────────────────
@@ -250,6 +253,10 @@ local map = vim.keymap.set
 -- Leader key
 vim.g.mapleader = " "
 vim.g.maplocalleader = "\\"
+
+-- Disable Node.js provider — we don't use it and it spams :checkhealth
+-- The neovim npm package is only needed for node-based plugins (none here).
+vim.g.loaded_node_provider = 0
 
 -- ── Normal mode ───────────────────────────────────────────────────────────────
 
@@ -288,17 +295,21 @@ map("n", "<leader>fk", "<cmd>Telescope keymaps<CR>",      { desc = "Keymaps" })
 map("n", "<leader>fs", "<cmd>Telescope git_status<CR>",   { desc = "Git status" })
 
 -- LSP
-map("n", "gd",         vim.lsp.buf.definition,         { desc = "Go to definition" })
-map("n", "gD",         vim.lsp.buf.declaration,        { desc = "Go to declaration" })
-map("n", "gr",         "<cmd>Telescope lsp_references<CR>", { desc = "References" })
-map("n", "gi",         vim.lsp.buf.implementation,     { desc = "Go to implementation" })
-map("n", "K",          vim.lsp.buf.hover,              { desc = "Hover docs" })
-map("n", "<leader>ca", vim.lsp.buf.code_action,        { desc = "Code actions" })
-map("n", "<leader>rn", vim.lsp.buf.rename,             { desc = "Rename symbol" })
-map("n", "<leader>lf", function() vim.lsp.buf.format({ async = true }) end, { desc = "Format" })
-map("n", "[d",         vim.diagnostic.goto_prev,       { desc = "Previous diagnostic" })
-map("n", "]d",         vim.diagnostic.goto_next,       { desc = "Next diagnostic" })
-map("n", "<leader>ld", vim.diagnostic.open_float,      { desc = "Show diagnostic" })
+-- NOTE: Neovim 0.11 added built-in LSP mappings under the `gr` prefix:
+--   grn = rename, gra = code_action, gri = implementation, grr = references
+-- We do NOT override `gr` — let the built-ins work for those.
+-- We remap to <leader> keys instead to avoid the conflict entirely.
+map("n", "gd",          vim.lsp.buf.definition,               { desc = "Go to definition" })
+map("n", "gD",          vim.lsp.buf.declaration,              { desc = "Go to declaration" })
+map("n", "K",           vim.lsp.buf.hover,                    { desc = "Hover docs" })
+map("n", "<leader>lr",  "<cmd>Telescope lsp_references<CR>",  { desc = "LSP references" })
+map("n", "<leader>li",  vim.lsp.buf.implementation,           { desc = "LSP implementation" })
+map("n", "<leader>ca",  vim.lsp.buf.code_action,              { desc = "Code actions" })
+map("n", "<leader>rn",  vim.lsp.buf.rename,                   { desc = "Rename symbol" })
+map("n", "<leader>lf",  function() vim.lsp.buf.format({ async = true }) end, { desc = "Format" })
+map("n", "[d",          vim.diagnostic.goto_prev,             { desc = "Previous diagnostic" })
+map("n", "]d",          vim.diagnostic.goto_next,             { desc = "Next diagnostic" })
+map("n", "<leader>ld",  vim.diagnostic.open_float,            { desc = "Show diagnostic" })
 
 -- Git (Gitsigns)
 map("n", "<leader>gs", "<cmd>Gitsigns stage_hunk<CR>",     { desc = "Stage hunk" })
@@ -344,10 +355,13 @@ require("lazy").setup({
   -- ── Status line ─────────────────────────────────────────────────────────────
   {
     "nvim-lualine/lualine.nvim",
-    dependencies = { "nvim-tree/nvim-web-devicons" },
+    dependencies = {
+      "nvim-tree/nvim-web-devicons",
+      "catppuccin/nvim",
+    },
     config = function()
       require("lualine").setup({
-        options = { theme = "catppuccin" },
+        options = { theme = "auto" },
         sections = {
           lualine_c = { { "filename", path = 1 } },
           lualine_x = { "encoding", "fileformat", "filetype" },
@@ -404,28 +418,23 @@ require("lazy").setup({
   },
 
   -- ── Treesitter ────────────────────────────────────────────────────────────────
-  -- nvim-treesitter v0.9+ removed the require("nvim-treesitter.configs") module.
-  -- The correct API is to pass config via opts = {} in the plugin spec,
-  -- which lazy.nvim passes to the plugin's own setup() automatically.
   {
     "nvim-treesitter/nvim-treesitter",
     build = ":TSUpdate",
-    -- event = "BufReadPost" keeps it lazy — only loads when a buffer is opened
     event = { "BufReadPost", "BufNewFile" },
+    main = "nvim-treesitter.configs",
     opts = {
       ensure_installed = {
         "bash", "c", "cpp", "go", "lua", "python", "rust",
         "typescript", "javascript", "json", "yaml", "toml",
         "dockerfile", "terraform", "hcl", "markdown", "vim",
-        "regex", "query",
+        -- regex and bash required by noice.nvim for cmdline highlighting
+        "regex", "query", "markdown_inline",
       },
       highlight = { enable = true },
       indent = { enable = true },
       incremental_selection = { enable = true },
     },
-    config = function(_, opts)
-      require("nvim-treesitter.configs").setup(opts)
-    end,
   },
 
   -- ── LSP ───────────────────────────────────────────────────────────────────────
@@ -559,21 +568,21 @@ require("lazy").setup({
     config = function()
       require("conform").setup({
         formatters_by_ft = {
-          lua        = { "stylua" },
-          python     = { "ruff_format", "black" },
-          go         = { "gofmt" },
-          rust       = { "rustfmt" },
-          sh         = { "shfmt" },
+          lua        = { "stylua" },   -- installed: dnf install stylua
+          python     = { "black" },    -- Mason installs black
+          go         = { "gofmt" },    -- built into Go toolchain
+          rust       = { "rustfmt" },  -- installed: dnf install rust
+          sh         = { "shfmt" },    -- installed: dnf install shfmt
           bash       = { "shfmt" },
-          json       = { "prettier" },
-          yaml       = { "prettier" },
-          markdown   = { "prettier" },
-          javascript = { "prettier" },
-          typescript = { "prettier" },
+          -- prettier and ruff_format are intentionally omitted — they are not
+          -- on PATH by default and produce a warning on every save.
+          -- Install via Mason (:MasonInstall prettier ruff) then add:
+          --   json / yaml / markdown / javascript / typescript = { "prettier" }
+          --   python = { "ruff_format", "black" }
         },
         format_on_save = {
           timeout_ms = 500,
-          lsp_format = "fallback",  -- "fallback" = use LSP only if no conform formatter found
+          lsp_format = "fallback",
         },
       })
     end,
@@ -653,6 +662,11 @@ require("lazy").setup({
 
 }, {
   -- lazy.nvim options
+  rocks = {
+    -- None of our plugins require luarocks. Disable hererocks entirely to
+    -- avoid the install failure warning on Fedora 44.
+    enabled = false,
+  },
   performance = {
     rtp = {
       -- Disable some built-in plugins we replace with better alternatives
