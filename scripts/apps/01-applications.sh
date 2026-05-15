@@ -97,9 +97,9 @@ EOF
     }
 
     # Create systemd user service for Dropbox daemon
-    local service_dir="${REAL_HOME}/.config/systemd/user"
-    sudo -u "${REAL_USER}" mkdir -p "${service_dir}"
-    sudo -u "${REAL_USER}" tee "${service_dir}/dropbox.service" > /dev/null <<'EOF'
+    DROPBOX_SERVICE_DIR="${REAL_HOME}/.config/systemd/user"
+    sudo -u "${REAL_USER}" mkdir -p "${DROPBOX_SERVICE_DIR}"
+    sudo -u "${REAL_USER}" tee "${DROPBOX_SERVICE_DIR}/dropbox.service" > /dev/null <<'EOF'
 [Unit]
 Description=Dropbox Daemon
 After=network-online.target
