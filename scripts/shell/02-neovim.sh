@@ -71,7 +71,8 @@ dnf_install \
   python3-neovim \
   wl-clipboard \
   xclip \
-  xsel
+  xsel \
+  tree-sitter-cli
 
 # npm is needed for many LSP servers; nodejs/npm installed in devtools
 # tree-sitter-cli can be installed via npm if needed
@@ -397,10 +398,9 @@ require("lazy").setup({
   -- ── Fuzzy finder (Telescope) ─────────────────────────────────────────────────
   -- Requires: ripgrep (rg), fd
   --
-  -- telescope/previewers/utils.lua does a bare require("nvim-treesitter.configs")
-  -- at module load time — not in a callback, not guarded. This fires the moment
-  -- noice's notify backend triggers telescope. Declaring nvim-treesitter as a
-  -- dependency forces lazy.nvim to install it before telescope ever loads.
+  -- telescope previewers load nvim-treesitter at startup via noice's notify
+  -- backend. Declaring nvim-treesitter as a dependency ensures it is installed
+  -- before telescope's previewers are loaded.
   {
     "nvim-telescope/telescope.nvim",
     tag = "0.1.8",
@@ -429,28 +429,34 @@ require("lazy").setup({
   },
 
   -- ── Treesitter ────────────────────────────────────────────────────────────────
-  -- PINNED to tag "v0.9.3" — the last release supporting Neovim 0.11.
-  -- nvim-treesitter main branch now requires Neovim >= 0.12.
-  -- Fedora 44 ships Neovim 0.11.x, so unpinned main always fails with:
-  --   "Nvim-treesitter requires Neovim 0.12.0 or later"
-  -- v0.9.3 uses the old require("nvim-treesitter.configs").setup() API.
-  -- Do NOT use lazy = false or main = here — the tag pin is the only required change.
+  -- The current nvim-treesitter main branch removed require("nvim-treesitter.configs").
+  -- The new API: require("nvim-treesitter") directly for parser installation,
+  -- and vim.treesitter.start() for per-buffer highlighting via FileType autocmd.
   {
     "nvim-treesitter/nvim-treesitter",
-    tag = "v0.9.3",
     build = ":TSUpdate",
-    event = { "BufReadPost", "BufNewFile" },
     config = function()
-      require("nvim-treesitter.configs").setup({
-        ensure_installed = {
-          "bash", "c", "cpp", "go", "lua", "python", "rust",
-          "typescript", "javascript", "json", "yaml", "toml",
-          "dockerfile", "terraform", "hcl", "markdown", "vim",
-          "regex", "query", "markdown_inline",
-        },
-        auto_install = true,
-        highlight = { enable = true },
-        indent = { enable = true },
+      local ts = require("nvim-treesitter")
+
+      -- Install parsers on startup and wait up to 30s
+      ts.install({
+        "bash", "c", "cpp", "go", "lua", "python", "rust",
+        "typescript", "javascript", "json", "yaml", "toml",
+        "dockerfile", "terraform", "hcl", "markdown", "vim",
+        "regex", "query", "markdown_inline",
+      }, { summary = false }):wait(30000)
+
+      -- Enable highlighting, indent, and other features per-buffer via FileType
+      vim.api.nvim_create_autocmd("FileType", {
+        callback = function(ev)
+          local lang = ev.match
+          -- Install parser for this filetype if not present
+          pcall(function()
+            ts.install({ lang }, { summary = false }):wait(10000)
+          end)
+          -- Enable built-in treesitter highlight
+          pcall(vim.treesitter.start, ev.buf, lang)
+        end,
       })
     end,
   },
@@ -695,7 +701,11 @@ require("lazy").setup({
     },
   },
   ui = { border = "rounded" },
-  checker = { enabled = true, notify = false },  -- Auto-check for plugin updates
+  -- checker.enabled = true causes a crash on Neovim 0.11:
+  -- lazy's git.lua calls get_tag_refs() which uses vim.treesitter internally,
+  -- hitting a nil 'range' method in languagetree.lua:215.
+  -- Disable the background checker entirely. Run :Lazy update manually when needed.
+  checker = { enabled = false },
 })
 PLUGINS_EOF
 
