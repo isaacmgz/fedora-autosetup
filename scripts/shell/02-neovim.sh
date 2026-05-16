@@ -102,8 +102,10 @@ fi
 # =============================================================================
 log_step "Installing LSP and Neovim tooling dependencies"
 
-# Python LSP server (pyright via npm is faster; python-lsp-server via dnf)
-dnf_install python3-lsp-server || true  # Optional; pyright via Mason is better
+# python3-lsp-server is intentionally NOT installed here.
+# Mason.nvim manages all LSP servers (pyright, gopls, etc.) from within Neovim.
+# python3-lsp-server would pull 12 extra packages (jedi, black, ujson, etc.)
+# for a server that Mason supersedes with pyright anyway.
 
 # Lua LSP (for Neovim config files — lua-language-server not in Fedora repos)
 # We use Mason.nvim to install lua-language-server from within Neovim
@@ -391,12 +393,18 @@ require("lazy").setup({
 
   -- ── Fuzzy finder (Telescope) ─────────────────────────────────────────────────
   -- Requires: ripgrep (rg), fd
+  --
+  -- telescope/previewers/utils.lua does a bare require("nvim-treesitter.configs")
+  -- at module load time — not in a callback, not guarded. This fires the moment
+  -- noice's notify backend triggers telescope. Declaring nvim-treesitter as a
+  -- dependency forces lazy.nvim to install it before telescope ever loads.
   {
     "nvim-telescope/telescope.nvim",
     tag = "0.1.8",
     dependencies = {
       "nvim-lua/plenary.nvim",
       { "nvim-telescope/telescope-fzf-native.nvim", build = "make" },
+      "nvim-treesitter/nvim-treesitter",
     },
     config = function()
       local telescope = require("telescope")
@@ -418,23 +426,27 @@ require("lazy").setup({
   },
 
   -- ── Treesitter ────────────────────────────────────────────────────────────────
+  -- nvim-treesitter does not support lazy-loading (upstream documented).
+  -- The main branch (current default) moved setup to require("nvim-treesitter").
+  -- require("nvim-treesitter.configs") no longer exists — using it as `main`
+  -- was the root cause of every "module not found" error.
   {
     "nvim-treesitter/nvim-treesitter",
     build = ":TSUpdate",
-    event = { "BufReadPost", "BufNewFile" },
-    main = "nvim-treesitter.configs",
-    opts = {
-      ensure_installed = {
-        "bash", "c", "cpp", "go", "lua", "python", "rust",
-        "typescript", "javascript", "json", "yaml", "toml",
-        "dockerfile", "terraform", "hcl", "markdown", "vim",
-        -- regex and bash required by noice.nvim for cmdline highlighting
-        "regex", "query", "markdown_inline",
-      },
-      highlight = { enable = true },
-      indent = { enable = true },
-      incremental_selection = { enable = true },
-    },
+    lazy = false,
+    config = function()
+      require("nvim-treesitter").setup({
+        ensure_installed = {
+          "bash", "c", "cpp", "go", "lua", "python", "rust",
+          "typescript", "javascript", "json", "yaml", "toml",
+          "dockerfile", "terraform", "hcl", "markdown", "vim",
+          "regex", "query", "markdown_inline",
+        },
+        auto_install = true,
+        highlight = { enable = true },
+        indent = { enable = true },
+      })
+    end,
   },
 
   -- ── LSP ───────────────────────────────────────────────────────────────────────
