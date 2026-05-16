@@ -66,10 +66,14 @@ dnf_install brave-browser-nightly
 # =============================================================================
 # 2. Dropbox (KDE-compatible approach)
 # =============================================================================
+# NOTE: linux.dropbox.com/fedora/44/ does not exist — Dropbox has not published
+# an F44-specific repo. DNF falls back to RPM Fusion nonfree which ships dropbox.
+# We still write the repo file (required for the GPG key import flow) but
+# disable it immediately after install to prevent 404 errors on every future
+# dnf makecache/upgrade call.
+# =============================================================================
 log_step "Installing Dropbox (KDE-compatible daemon method)"
 
-# We use the official Dropbox RPM which provides the daemon without GNOME deps.
-# The RPM adds the Dropbox repository itself.
 DROPBOX_REPO="/etc/yum.repos.d/dropbox.repo"
 
 if ! rpm_installed dropbox; then
@@ -78,20 +82,21 @@ if ! rpm_installed dropbox; then
     sudo rpm --import "https://linux.dropbox.com/fedora/rpm-public-key.asc" || \
       log_warn "Dropbox GPG key import failed — verify manually"
 
-    # Add Dropbox repo
+    # Write repo file temporarily — baseurl pinned to f38 (last working Fedora
+    # release in the Dropbox repo). disabled=1 so it doesn't pollute future DNF ops.
     sudo tee "${DROPBOX_REPO}" > /dev/null <<'EOF'
 [Dropbox]
 name=Dropbox Repository
-baseurl=https://linux.dropbox.com/fedora/$releasever/
+baseurl=https://linux.dropbox.com/fedora/38/
 gpgkey=https://linux.dropbox.com/fedora/rpm-public-key.asc
-enabled=1
+enabled=0
 gpgcheck=1
 EOF
 
-    sudo "${DNF_CMD}" makecache
-    # 'dropbox' package provides daemon + CLI, no GNOME dependencies
+    # Install from RPM Fusion nonfree (which ships the current dropbox package)
+    # rather than the broken Dropbox repo. RPM Fusion is already enabled.
     sudo "${DNF_CMD}" install -y dropbox || {
-      log_warn "Dropbox RPM install failed — this sometimes happens on new Fedora releases"
+      log_warn "Dropbox RPM install failed"
       log_warn "Alternative: Download the .tar.gz from https://www.dropbox.com/install-linux"
       log_warn "Then run: ~/.dropbox-dist/dropboxd"
     }
@@ -117,10 +122,16 @@ EOF
     sudo -u "${REAL_USER}" systemctl --user enable dropbox.service || true
     log_success "Dropbox installed and systemd user service configured"
   else
-    log_dry "Would install Dropbox RPM and configure systemd user service"
+    log_dry "Would install Dropbox from RPM Fusion nonfree and configure systemd user service"
   fi
 else
   log_skip "Dropbox (already installed)"
+  # Ensure the repo is disabled even on re-runs — it produces 404s if enabled
+  if [[ -f "${DROPBOX_REPO}" ]] && grep -q "^enabled=1" "${DROPBOX_REPO}" 2>/dev/null; then
+    log_step "Disabling broken Dropbox repo (linux.dropbox.com/fedora/44/ returns 404)"
+    sudo sed -i 's/^enabled=1/enabled=0/' "${DROPBOX_REPO}"
+    log_success "Dropbox repo disabled"
+  fi
 fi
 
 # ── KDE systray note ──────────────────────────────────────────────────────────
