@@ -162,6 +162,9 @@ main() {
   # ── Phase 7: Neovim ─────────────────────────────────────────────────────────
   run_module "neovim"    "${SCRIPTS_DIR}/shell/02-neovim.sh"
 
+  # ── Phase 8: Work environment (Kaskey project) ───────────────────────────────
+  run_module "work"      "${SCRIPTS_DIR}/work/01-kaskey.sh"
+
   # ── Done ─────────────────────────────────────────────────────────────────────
   print_summary
 }
