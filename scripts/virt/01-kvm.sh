@@ -34,6 +34,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 source "${LIB_DIR}/helpers.sh"
+source "${LIB_DIR}/checks.sh"
 source "${LIB_DIR}/pkg.sh"
 
 log_section "KVM / libvirt Virtualization"
@@ -87,7 +88,7 @@ dnf_install \
   virt-viewer \
   bridge-utils \
   edk2-ovmf \
-  libguestfs-tools \
+  libguestfs-tools-c \
   python3-libvirt
 
 # =============================================================================
@@ -104,10 +105,11 @@ if ! "${DRY_RUN}"; then
   # Ensure the default network is active
   if sudo virsh net-info default &>/dev/null; then
     if ! sudo virsh net-info default | grep -q "Active:.*yes"; then
-      sudo virsh net-start default || true
+      # Suppress "network is already active" — harmless race condition
+      sudo virsh net-start default 2>/dev/null || true
     fi
     if ! sudo virsh net-info default | grep -q "Autostart:.*yes"; then
-      sudo virsh net-autostart default || true
+      sudo virsh net-autostart default 2>/dev/null || true
     fi
   else
     log_warn "Default libvirt network not found — run 'sudo virsh net-define /usr/share/libvirt/networks/default.xml'"
