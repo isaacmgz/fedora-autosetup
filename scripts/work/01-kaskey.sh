@@ -13,7 +13,6 @@
 #   - AWS supporting tools: eksctl, aws-vault, awscli-local (LocalStack)
 #   - Go toolchain (already in devtools; verified here)
 #   - WireGuard (in Fedora official repos — no COPR, no DKMS needed)
-#   - Network Manager WireGuard plugin for GUI/nmcli management
 #
 # JAVA STRATEGY:
 #   Fedora 44 already ships OpenJDK 25 (installed as system Java).
@@ -313,14 +312,12 @@ fi
 # The kernel module is built into the Fedora kernel (since Linux 5.6).
 # No COPR, no DKMS, no third-party repo required.
 # wireguard-tools: wg and wg-quick userspace utilities
-# NetworkManager-wireguard: nmcli/nmtui integration for KDE Plasma
+# NetworkManager natively supports wireguard.
 # plasma-nm: KDE Plasma network manager applet (should already be installed)
 # =============================================================================
 log_step "Installing WireGuard"
 
-dnf_install \
-  wireguard-tools \
-  NetworkManager-wireguard
+dnf_install wireguard-tools
 
 # Verify kernel module is available
 log_step "Verifying WireGuard kernel module"
