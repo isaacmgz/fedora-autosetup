@@ -166,14 +166,11 @@ dnf_install sbt
 # =============================================================================
 # 4. Scala toolchain
 # =============================================================================
-# scala: Fedora repo (useful for scripting and REPL work)
-# Coursier (cs): the official Scala toolchain launcher — installs scalac,
-#   scala-cli, metals LSP, and manages Scala versions independently of SBT.
-#   This is the modern way to work with Scala outside of SBT projects.
+# NOTE: The 'scala' RPM was removed from Fedora repos. Do not attempt dnf_install.
+# Coursier (cs) is the modern canonical way to manage the Scala toolchain —
+# it installs scala-cli, scalac, metals LSP, and manages Scala/SBT versions.
+# scala-cli is the recommended successor to the bare scala REPL.
 # =============================================================================
-log_step "Installing Scala (Fedora repo)"
-dnf_install scala
-
 log_step "Installing Coursier (cs) — Scala toolchain launcher"
 CS_BIN="/usr/local/bin/cs"
 
@@ -187,7 +184,7 @@ else
     sudo mv /tmp/cs "${CS_BIN}"
     log_success "Coursier cs installed to ${CS_BIN}"
 
-    # Set up Coursier for the real user
+    # Bootstrap Scala tools for the real user
     sudo -u "${REAL_USER}" bash -c "
       export JAVA_HOME='${CORRETTO_INSTALL_DIR}'
       ${CS_BIN} setup --yes 2>/dev/null || true
@@ -197,19 +194,15 @@ else
   fi
 fi
 
-# ── Add Coursier bin path to .zshrc ───────────────────────────────────────────
+# ── Add Coursier bin path to .zshrc (idempotent) ────────────────────────────
+# SDKMAN appends its own block to .zshrc during install. We write to a
+# separate .zshrc.d/kaskey.zsh file to avoid collisions with re-runs.
 if [[ -f "${ZSHRC}" ]] && ! grep -q "coursier" "${ZSHRC}" 2>/dev/null; then
   if ! "${DRY_RUN}"; then
     sudo -u "${REAL_USER}" tee -a "${ZSHRC}" > /dev/null <<'EOF'
 
-# =============================================================================
 # Scala — Coursier managed binaries (scalac, scala-cli, metals, etc.)
-# =============================================================================
 export PATH="${HOME}/.local/share/coursier/bin:${PATH}"
-
-# Kaskey project: Java 11 (Corretto) — set JAVA_HOME before running sbt
-# Uncomment and use as needed, or use: sdk use java 11.0.31-amzn
-# export JAVA_HOME=/usr/lib/jvm/java-11-amazon-corretto.x86_64
 EOF
     log_success "Coursier PATH added to .zshrc"
   fi
