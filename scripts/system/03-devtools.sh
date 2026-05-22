@@ -78,8 +78,8 @@ dnf_install \
   python3-devel \
   python3-virtualenv \
   pipx \
-  nodejs \
-  npm \
+  nodejs22 \
+  nodejs22-npm \
   rust \
   cargo \
   golang
@@ -93,14 +93,13 @@ dnf_install \
   zsh \
   tmux \
   curl \
-  wget \
+  wget2-wget \
   unzip \
   tar \
   gzip \
   bzip2 \
   xz \
-  p7zip \
-  p7zip-plugins \
+  7zip \
   tree \
   jq \
   yq \
@@ -155,7 +154,7 @@ dnf_install gh
 log_step "Installing development quality tools"
 
 dnf_install \
-  shellcheck \
+  ShellCheck \
   shfmt
 
 # =============================================================================
@@ -168,7 +167,7 @@ dnf_install \
   netcat \
   tcpdump \
   mtr \
-  dnsutils \
+  bind-utils \
   whois \
   httpie \
   openssh-clients
